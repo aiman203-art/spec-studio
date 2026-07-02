@@ -21,7 +21,7 @@ import {
   type ExportPayload,
   type MoodboardItem,
   type SummaryRow,
-} from '../_lib/schedule'
+} from '../_lib/schedule.js'
 
 function headerCell(text: string): TableCell {
   return new TableCell({

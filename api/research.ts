@@ -8,7 +8,7 @@ import {
   OUTPUT_SCHEMA,
   type ModelItem,
   type ResearchRequest,
-} from './_lib/prompts'
+} from './_lib/prompts.js'
 
 export const config = { maxDuration: 60 }
 

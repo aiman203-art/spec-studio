@@ -6,7 +6,7 @@ import {
   DISCIPLINE_TITLE,
   safeFileName,
   type ExportPayload,
-} from '../_lib/schedule'
+} from '../_lib/schedule.js'
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
