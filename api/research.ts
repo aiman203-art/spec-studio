@@ -10,7 +10,7 @@ import {
 
 export const config = { maxDuration: 60 }
 
-const GEMINI_MODEL = 'gemini-2.0-flash'
+const GEMINI_MODEL = 'gemini-1.5-flash'
 
 type MockItem = Omit<ModelItem, 'specPairs'> & { specs: Record<string, string> }
 const MOCK_ITEMS: Record<string, MockItem[]> = {
