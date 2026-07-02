@@ -194,7 +194,8 @@ export async function exportPdf(
 
   const safe = (info.name || 'schedule').replace(/[^\w-]+/g, '_').slice(0, 40) || 'schedule'
   if (mode === 'bloburl') {
-    return doc.output('bloburl') as unknown as string
+    const blob = doc.output('blob')
+    return URL.createObjectURL(blob)
   }
   doc.save(`${safe}_schedule.pdf`)
 }

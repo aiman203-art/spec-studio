@@ -363,12 +363,12 @@ function DocModal({
             </div>
           </div>
 
-          {/* iframe */}
-          <iframe
+          {/* PDF embed */}
+          <embed
             src={previewUrl}
+            type="application/pdf"
             className="flex-1 w-full"
             style={{ border: 'none', background: '#2a2520' }}
-            title="PDF Preview"
           />
         </div>
       )}
