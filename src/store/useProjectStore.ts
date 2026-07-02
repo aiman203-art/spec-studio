@@ -66,6 +66,11 @@ interface ProjectState {
     d: Discipline,
     items: RecommendationItem[],
   ) => void
+  appendRecommendations: (
+    id: string,
+    d: Discipline,
+    items: RecommendationItem[],
+  ) => void
   setItemStatus: (
     id: string,
     d: Discipline,
@@ -131,6 +136,17 @@ export const useProjectStore = create<ProjectState>()(
         set((s) => ({
           projects: mutateProject(s.projects, id, (p) => {
             p[d].recommendations = items
+          }),
+        })),
+
+      appendRecommendations: (id, d, items) =>
+        set((s) => ({
+          projects: mutateProject(s.projects, id, (p) => {
+            const existingCodes = new Set(p[d].recommendations.map((r) => r.code))
+            p[d].recommendations = [
+              ...p[d].recommendations,
+              ...items.filter((r) => !existingCodes.has(r.code)),
+            ]
           }),
         })),
 

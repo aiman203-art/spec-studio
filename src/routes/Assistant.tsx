@@ -28,6 +28,7 @@ export function Assistant({ discipline }: { discipline: Discipline }) {
   const project = useProjectStore((s) => s.projects.find((p) => p.id === id))
   const setScope = useProjectStore((s) => s.setScope)
   const setRecommendations = useProjectStore((s) => s.setRecommendations)
+  const appendRecommendations = useProjectStore((s) => s.appendRecommendations)
   const setItemStatus = useProjectStore((s) => s.setItemStatus)
   const submitSelections = useProjectStore((s) => s.submitSelections)
 
@@ -43,6 +44,7 @@ export function Assistant({ discipline }: { discipline: Discipline }) {
     (disc?.recommendations.length ?? 0) > 0 ? 'review' : 'scope',
   )
   const [error, setError] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   const recommendations = disc?.recommendations ?? []
   const approvedCount = useMemo(
@@ -83,6 +85,33 @@ export function Assistant({ discipline }: { discipline: Discipline }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Research failed')
       setPhase('scope')
+    }
+  }
+
+  async function loadMore() {
+    const scope: ScopeForm = { room: scopeDraft.room ?? '', ...scopeDraft }
+    setError(null)
+    setLoadingMore(true)
+    try {
+      const existingCodes = [
+        ...(disc?.approved.map((a) => a.code) ?? []),
+        ...recommendations.map((r) => r.code),
+      ]
+      const items = await requestResearch({
+        discipline,
+        projectInfo: project!.info,
+        scope,
+        existingCodes,
+      })
+      if (items.length === 0) {
+        setError('No additional options were returned. Try adjusting the scope.')
+        return
+      }
+      appendRecommendations(id, discipline, items)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Research failed')
+    } finally {
+      setLoadingMore(false)
     }
   }
 
@@ -161,7 +190,7 @@ export function Assistant({ discipline }: { discipline: Discipline }) {
                 {phase === 'review' ? 'Re-run research' : 'Research options'}
               </Button>
             </div>
-            {error && <p className="mt-3 text-caption text-reject">{error}</p>}
+            {error && phase === 'scope' && <p className="mt-3 text-caption text-reject">{error}</p>}
           </Card>
 
           {/* Brief context */}
@@ -201,6 +230,24 @@ export function Assistant({ discipline }: { discipline: Discipline }) {
                     }
                   />
                 ))}
+              </div>
+
+              {/* Show more */}
+              <div className="mt-6 flex flex-col items-center gap-2">
+                {loadingMore ? (
+                  <div className="flex items-center gap-2 text-body text-muted">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
+                    Finding more options…
+                  </div>
+                ) : (
+                  <button
+                    onClick={loadMore}
+                    className="rounded-pill border border-border px-6 py-2.5 text-body text-muted transition-all hover:border-accent/50 hover:text-ink"
+                  >
+                    + Show more options
+                  </button>
+                )}
+                {error && <p className="text-caption text-reject">{error}</p>}
               </div>
 
               {/* Sticky status bar */}
