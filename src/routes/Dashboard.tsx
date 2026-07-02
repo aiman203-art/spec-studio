@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import html2canvas from 'html2canvas'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '../components/AppShell'
 import { Button } from '../components/ui/Button'
@@ -153,22 +154,41 @@ function DocPreview({
   checked,
   includeSummary,
   includeMoodboard,
-  onDownload,
   onClose,
 }: {
   project: Project
   checked: Set<string>
   includeSummary: boolean
   includeMoodboard: boolean
-  onDownload: () => void
   onClose: () => void
 }) {
+  const moodboardRef = useRef<HTMLDivElement>(null)
+  const [downloading, setDownloading] = useState(false)
   const info = project.info
   const amber = '#c9922a'
   const dark  = '#1a1710'
   const mid   = '#8a7a6a'
   const cream = '#f5f0e8'
   const altRow = '#f0ece4'
+
+  async function handleDownload() {
+    setDownloading(true)
+    try {
+      let canvas: HTMLCanvasElement | undefined
+      if (includeMoodboard && moodboardRef.current) {
+        canvas = await html2canvas(moodboardRef.current, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+        })
+      }
+      await exportPdf(project, checked, includeSummary, includeMoodboard, canvas)
+      onClose()
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   const summaryRows: [string, string][] = [
     ['Style',              describeField(info.style)],
@@ -206,11 +226,12 @@ function DocPreview({
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={onDownload}
-            className="rounded-pill px-5 h-9 text-body font-medium"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="rounded-pill px-5 h-9 text-body font-medium disabled:opacity-60"
             style={{ background: amber, color: '#fff' }}
           >
-            ↓ Download PDF
+            {downloading ? 'Preparing…' : '↓ Download PDF'}
           </button>
           <button
             onClick={onClose}
@@ -298,12 +319,12 @@ function DocPreview({
               )
             })}
 
-            {/* Mood board note */}
+            {/* Mood board — visual image grid */}
             {includeMoodboard && (
               <section style={{ marginTop: 28 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: amber, letterSpacing: 2, marginBottom: 8 }}>MOOD BOARD</div>
-                <div style={{ padding: '12px 16px', background: cream, borderRadius: 6, fontSize: 12, color: mid }}>
-                  The mood board image will be included in the downloaded PDF.
+                <div style={{ fontSize: 11, fontWeight: 700, color: amber, letterSpacing: 2, marginBottom: 12 }}>MOOD BOARD</div>
+                <div ref={moodboardRef} style={{ background: '#fff' }}>
+                  <MoodboardGrid project={project} />
                 </div>
               </section>
             )}
@@ -315,6 +336,55 @@ function DocPreview({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function MoodboardGrid({ project }: { project: Project }) {
+  const allItems = DISCIPLINES.flatMap((d) => project[d].approved)
+  if (allItems.length === 0) return null
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+      {allItems.map((item) => (
+        <div
+          key={item.code}
+          style={{
+            aspectRatio: '1',
+            background: '#f0ece4',
+            borderRadius: 4,
+            overflow: 'hidden',
+            position: 'relative',
+          }}
+        >
+          {item.imageUrl ? (
+            <img
+              src={item.imageUrl}
+              alt={item.name}
+              loading="lazy"
+              decoding="async"
+              crossOrigin="anonymous"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          ) : (
+            <div style={{
+              width: '100%', height: '100%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 28, color: '#c9922a', fontFamily: 'Georgia, serif',
+            }}>
+              {item.name[0]}
+            </div>
+          )}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            background: 'linear-gradient(transparent, rgba(26,23,16,0.82))',
+            padding: '16px 6px 5px',
+          }}>
+            <div style={{ fontSize: 9, color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>{item.name}</div>
+            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.65)', marginTop: 1 }}>{item.manufacturer}</div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -493,7 +563,6 @@ function DocModal({
           checked={checked}
           includeSummary={includeSummary}
           includeMoodboard={includeMoodboard}
-          onDownload={() => { setShowPreview(false); handleExport('pdf') }}
           onClose={() => setShowPreview(false)}
         />
       )}
