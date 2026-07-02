@@ -4,7 +4,7 @@ import { AppShell } from '../components/AppShell'
 import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
 import { approvedCount, useProjectStore } from '../store/useProjectStore'
-import { DISCIPLINES, PROJECT_TYPE_LABELS, type Discipline } from '../store/types'
+import { DISCIPLINES, PROJECT_TYPE_LABELS, type Discipline, type Project } from '../store/types'
 import { describeField } from '../lib/fieldState'
 import { useToast } from '../components/ui/Toast'
 import { exportSchedule } from '../lib/export'
@@ -146,6 +146,179 @@ export function Dashboard() {
   )
 }
 
+// ─── HTML Document Preview ────────────────────────────────────────────────────
+
+function DocPreview({
+  project,
+  checked,
+  includeSummary,
+  includeMoodboard,
+  onDownload,
+  onClose,
+}: {
+  project: Project
+  checked: Set<string>
+  includeSummary: boolean
+  includeMoodboard: boolean
+  onDownload: () => void
+  onClose: () => void
+}) {
+  const info = project.info
+  const amber = '#c9922a'
+  const dark  = '#1a1710'
+  const mid   = '#8a7a6a'
+  const cream = '#f5f0e8'
+  const altRow = '#f0ece4'
+
+  const summaryRows: [string, string][] = [
+    ['Style',              describeField(info.style)],
+    ['Budget',             describeField(info.budget)],
+    ['Colour palette',     describeField(info.colourPalette)],
+    ['Materials to avoid', describeField(info.materialsToAvoid)],
+    ['Compliance',         describeField(info.compliance)],
+    ['Supply chain',       describeField(info.supplyChain)],
+    ...Object.entries(info.typeSpecific).map(([k, f]) => [k, describeField(f)] as [string, string]),
+  ]
+
+  const locationStr = info.location.state === 'filled' && info.location.value
+    ? (info.location.value as { address?: string }).address ?? ''
+    : ''
+  const meta = [
+    describeField(info.client) ? `Client: ${describeField(info.client)}` : null,
+    `Type: ${PROJECT_TYPE_LABELS[info.projectType] ?? info.projectType}`,
+    locationStr ? `Location: ${locationStr}` : null,
+    `Date: ${new Date().toLocaleDateString()}`,
+  ].filter(Boolean).join('   ·   ')
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex flex-col"
+      style={{ background: 'rgba(14,12,9,0.88)' }}
+    >
+      {/* Toolbar */}
+      <div
+        className="flex items-center justify-between px-6 py-3 shrink-0"
+        style={{ background: '#16140f', borderBottom: '1px solid #2e2a24' }}
+      >
+        <div className="flex items-center gap-3">
+          <span className="font-serif" style={{ color: cream, fontSize: 18 }}>Document Preview</span>
+          <span className="text-caption" style={{ color: mid }}>{info.name || 'Untitled Project'}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onDownload}
+            className="rounded-pill px-5 h-9 text-body font-medium"
+            style={{ background: amber, color: '#fff' }}
+          >
+            ↓ Download PDF
+          </button>
+          <button
+            onClick={onClose}
+            className="rounded-pill px-4 h-9 text-body"
+            style={{ color: mid, border: '1px solid #3a3530' }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable preview body */}
+      <div className="flex-1 overflow-y-auto py-10 px-6" style={{ background: '#2a2520' }}>
+        <div
+          className="mx-auto"
+          style={{ maxWidth: 900, background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}
+        >
+          {/* Amber sidebar + header */}
+          <div style={{ display: 'flex' }}>
+            <div style={{ width: 8, background: amber, flexShrink: 0 }} />
+            <div style={{ flex: 1, padding: '28px 32px 20px' }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: dark }}>{info.name || 'Untitled Project'}</div>
+              <div style={{ fontSize: 11, color: mid, marginTop: 4 }}>{meta}</div>
+            </div>
+          </div>
+
+          <div style={{ padding: '0 32px 32px' }}>
+            {/* Project summary */}
+            {includeSummary && summaryRows.length > 0 && (
+              <section style={{ marginTop: 24 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: amber, letterSpacing: 2, marginBottom: 8 }}>PROJECT SUMMARY</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: amber }}>
+                      <th style={{ padding: '6px 10px', color: '#fff', textAlign: 'left', width: 160 }}>Field</th>
+                      <th style={{ padding: '6px 10px', color: '#fff', textAlign: 'left' }}>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summaryRows.map(([k, v], i) => (
+                      <tr key={k} style={{ background: i % 2 === 0 ? '#fff' : altRow }}>
+                        <td style={{ padding: '5px 10px', color: mid, fontWeight: 600 }}>{k}</td>
+                        <td style={{ padding: '5px 10px', color: dark }}>{v || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            )}
+
+            {/* Discipline schedules */}
+            {DISCIPLINES.map((d) => {
+              const items = project[d].approved.filter((a) => checked.has(a.code))
+              if (items.length === 0) return null
+              return (
+                <section key={d} style={{ marginTop: 28 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: amber, letterSpacing: 2, marginBottom: 8 }}>
+                    {DISCIPLINE_LABEL[d].toUpperCase()} SCHEDULE
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ background: dark }}>
+                        {['Code', 'Name', 'Manufacturer', 'Finish', 'Colour', 'Room', 'Qty', 'Cost', 'Notes'].map((h) => (
+                          <th key={h} style={{ padding: '6px 8px', color: '#fff', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((it, i) => (
+                        <tr key={it.code} style={{ background: i % 2 === 0 ? '#fff' : altRow }}>
+                          <td style={{ padding: '5px 8px', color: mid, fontWeight: 600, whiteSpace: 'nowrap' }}>{it.code}</td>
+                          <td style={{ padding: '5px 8px', color: dark }}>{it.name}</td>
+                          <td style={{ padding: '5px 8px', color: dark }}>{it.manufacturer}</td>
+                          <td style={{ padding: '5px 8px', color: dark }}>{it.finish}</td>
+                          <td style={{ padding: '5px 8px', color: dark }}>{it.colour}</td>
+                          <td style={{ padding: '5px 8px', color: dark }}>{it.room}</td>
+                          <td style={{ padding: '5px 8px', color: dark, textAlign: 'center' }}>{it.quantity}</td>
+                          <td style={{ padding: '5px 8px', color: dark, whiteSpace: 'nowrap' }}>{it.estimatedCost}</td>
+                          <td style={{ padding: '5px 8px', color: mid }}>{it.notes || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+              )
+            })}
+
+            {/* Mood board note */}
+            {includeMoodboard && (
+              <section style={{ marginTop: 28 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: amber, letterSpacing: 2, marginBottom: 8 }}>MOOD BOARD</div>
+                <div style={{ padding: '12px 16px', background: cream, borderRadius: 6, fontSize: 12, color: mid }}>
+                  The mood board image will be included in the downloaded PDF.
+                </div>
+              </section>
+            )}
+
+            {/* Footer */}
+            <div style={{ marginTop: 32, paddingTop: 12, borderTop: '1px solid #e8e0d4', fontSize: 10, color: mid, textAlign: 'center' }}>
+              {info.name || 'Spec Studio'} — generated {new Date().toLocaleDateString()}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-4">
@@ -170,8 +343,7 @@ function DocModal({
   const [includeSummary, setIncludeSummary] = useState(true)
   const [includeMoodboard, setIncludeMoodboard] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [previewing, setPreviewing] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
 
   function toggle(code: string) {
     setChecked((prev) => {
@@ -202,21 +374,6 @@ function DocModal({
     setBusy(false)
   }
 
-  async function handlePreview() {
-    if (checked.size === 0 && !includeSummary && !includeMoodboard) return
-    setPreviewing(true)
-    try {
-      const url = await exportPdf(project, checked, includeSummary, includeMoodboard, undefined, 'bloburl')
-      if (url) setPreviewUrl(url as string)
-    } finally {
-      setPreviewing(false)
-    }
-  }
-
-  function closePreview() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    setPreviewUrl(null)
-  }
 
   return (
     <div
@@ -303,12 +460,12 @@ function DocModal({
           </span>
           <div className="flex gap-2">
             <button
-              disabled={previewing || busy || (checked.size === 0 && !includeSummary && !includeMoodboard)}
-              onClick={handlePreview}
+              disabled={busy || (checked.size === 0 && !includeSummary && !includeMoodboard)}
+              onClick={() => setShowPreview(true)}
               className="rounded-pill px-4 h-9 text-body font-medium transition-all disabled:opacity-40"
               style={{ background: 'transparent', color: '#6b5e4a', border: '1px solid #d6cfc2' }}
             >
-              {previewing ? '…' : '⊡ Preview'}
+              ⊡ Preview
             </button>
             {([
               { fmt: 'xlsx', label: 'Excel', bg: '#e2dbd0', color: '#3d3020', border: '1px solid #d6cfc2' },
@@ -329,48 +486,16 @@ function DocModal({
         </div>
       </div>
 
-      {/* PDF Preview modal */}
-      {previewUrl && (
-        <div
-          className="fixed inset-0 z-[60] flex flex-col"
-          style={{ background: 'rgba(14,12,9,0.85)' }}
-        >
-          {/* Preview toolbar */}
-          <div className="flex items-center justify-between px-6 py-3 shrink-0" style={{ background: '#1a1710', borderBottom: '1px solid #2e2a24' }}>
-            <div className="flex items-center gap-3">
-              <span className="font-serif text-title-sm" style={{ color: '#f5f0e8' }}>
-                PDF Preview
-              </span>
-              <span className="text-caption" style={{ color: '#8a7a6a' }}>
-                {project.info.name || 'Untitled Project'}
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => { closePreview(); handleExport('pdf') }}
-                className="rounded-pill px-5 h-9 text-body font-medium"
-                style={{ background: '#c9922a', color: '#fff' }}
-              >
-                ↓ Download PDF
-              </button>
-              <button
-                onClick={closePreview}
-                className="rounded-pill px-4 h-9 text-body"
-                style={{ background: 'transparent', color: '#8a7a6a', border: '1px solid #3a3530' }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-
-          {/* PDF embed */}
-          <embed
-            src={previewUrl}
-            type="application/pdf"
-            className="flex-1 w-full"
-            style={{ border: 'none', background: '#2a2520' }}
-          />
-        </div>
+      {/* HTML Preview modal */}
+      {showPreview && (
+        <DocPreview
+          project={project}
+          checked={checked}
+          includeSummary={includeSummary}
+          includeMoodboard={includeMoodboard}
+          onDownload={() => { setShowPreview(false); handleExport('pdf') }}
+          onClose={() => setShowPreview(false)}
+        />
       )}
     </div>
   )
