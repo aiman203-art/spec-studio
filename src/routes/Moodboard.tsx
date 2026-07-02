@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, Link, useParams } from 'react-router-dom'
 import html2canvas from 'html2canvas'
+import { Rnd } from 'react-rnd'
 import { useProjectStore } from '../store/useProjectStore'
-import { DISCIPLINES, type ApprovedItem, type Discipline } from '../store/types'
+import { DISCIPLINES, type ApprovedItem, type Discipline, type MoodboardTile } from '../store/types'
 import { describeField } from '../lib/fieldState'
 import { exportPdf } from '../lib/exportPdf'
 
@@ -42,46 +43,97 @@ function shuffle<T>(arr: T[]): T[] {
   return a
 }
 
-// Each slot in the collage grid — spans vary to create visual weight
-const SLOT_SIZES: Array<{ cols: string; rows: string; imgH: string }> = [
-  { cols: 'col-span-2 row-span-2', rows: '', imgH: 'h-64' },  // large feature
-  { cols: 'col-span-1 row-span-1', rows: '', imgH: 'h-40' },  // small
-  { cols: 'col-span-1 row-span-2', rows: '', imgH: 'h-56' },  // tall portrait
-  { cols: 'col-span-1 row-span-1', rows: '', imgH: 'h-36' },  // small
-  { cols: 'col-span-2 row-span-1', rows: '', imgH: 'h-44' },  // wide landscape
-  { cols: 'col-span-1 row-span-1', rows: '', imgH: 'h-40' },  // small
-  { cols: 'col-span-1 row-span-2', rows: '', imgH: 'h-52' },  // tall
-  { cols: 'col-span-1 row-span-1', rows: '', imgH: 'h-36' },  // small
-  { cols: 'col-span-2 row-span-1', rows: '', imgH: 'h-40' },  // wide
-]
+// ── Freeform canvas layout constants ──────────────────────────────────────
+const COLS = 4
+const COL_W = 250
+const GAP = 20
+const CANVAS_W = COLS * COL_W + (COLS - 1) * GAP
+const TILE_HEIGHTS = [200, 240, 280, 320, 260]
 
-// Subtle rotations — same feel as physical pin-board
-const ROTATIONS = [0, 0.8, -0.6, 0, 1.2, -0.9, 0, 0.5, -0.7]
+function sizeForCode(code: string): { w: number; h: number } {
+  const hash = code.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+  return { w: COL_W, h: TILE_HEIGHTS[hash % TILE_HEIGHTS.length] }
+}
+
+/** Pinterest-style shortest-column packing. Appends below `startY`. */
+function packTiles(codes: string[], startY = 0, startZ = 1): Record<string, MoodboardTile> {
+  const heights = Array(COLS).fill(startY)
+  const out: Record<string, MoodboardTile> = {}
+  codes.forEach((code, i) => {
+    const col = heights.indexOf(Math.min(...heights))
+    const { w, h } = sizeForCode(code)
+    out[code] = { x: col * (COL_W + GAP), y: heights[col], w, h, z: startZ + i }
+    heights[col] += h + GAP
+  })
+  return out
+}
 
 export function Moodboard() {
   const { id = '' } = useParams()
   const project = useProjectStore((s) => s.projects.find((p) => p.id === id))
+  const setMoodboardLayout = useProjectStore((s) => s.setMoodboardLayout)
+  const setMoodboardTile = useProjectStore((s) => s.setMoodboardTile)
   const [filter, setFilter] = useState<Discipline | 'all'>('all')
-  const [seed, setSeed] = useState(0)
   const [selected, setSelected] = useState<(ApprovedItem & { discipline: Discipline }) | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const topZRef = useRef(1)
+
+  const allItems: Array<ApprovedItem & { discipline: Discipline }> = project
+    ? DISCIPLINES.flatMap((d) => project[d].approved.map((item) => ({ ...item, discipline: d })))
+    : []
+
+  const layout = project?.moodboardLayout ?? {}
+
+  // Auto-place any approved item that doesn't have a saved tile yet — appended
+  // below the current arrangement so it never disturbs tiles the user already moved.
+  useEffect(() => {
+    if (!project) return
+    const missing = allItems.filter((item) => !layout[item.code])
+    if (missing.length === 0) return
+    const startY = Object.values(layout).length
+      ? Math.max(...Object.values(layout).map((t) => t.y + t.h)) + GAP
+      : 0
+    const startZ = Object.values(layout).length
+      ? Math.max(...Object.values(layout).map((t) => t.z)) + 1
+      : 1
+    setMoodboardLayout(project.id, packTiles(missing.map((m) => m.code), startY, startZ))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id, allItems.length])
+
+  useEffect(() => {
+    const maxZ = Object.values(layout).reduce((m, t) => Math.max(m, t.z), 0)
+    topZRef.current = Math.max(topZRef.current, maxZ + 1)
+  }, [layout])
 
   if (!project) return <Navigate to="/" replace />
   const { info } = project
 
-  const allItems: Array<ApprovedItem & { discipline: Discipline }> = DISCIPLINES.flatMap((d) =>
-    project[d].approved.map((item) => ({ ...item, discipline: d })),
-  )
-
-  const ordered = seed === 0 ? allItems : shuffle(allItems)
-  const visible = filter === 'all' ? ordered : ordered.filter((i) => i.discipline === filter)
+  const visible = filter === 'all' ? allItems : allItems.filter((i) => i.discipline === filter)
 
   const paletteTokens = (info.colourPalette?.state === 'filled' ? String(info.colourPalette.value) : '')
     .split(/[,;/·]+/).map((s) => s.trim()).filter(Boolean).slice(0, 7)
 
   const styleLabel = info.style?.state === 'filled' ? describeField(info.style) : ''
+
+  const canvasHeight = visible.length
+    ? Math.max(600, ...visible.map((item) => {
+        const t = layout[item.code]
+        return t ? t.y + t.h : 300
+      })) + 60
+    : 300
+
+  function bringToFront(code: string) {
+    topZRef.current += 1
+    setMoodboardTile(project!.id, code, { z: topZRef.current })
+  }
+
+  function autoArrange() {
+    const codes = shuffle(visible.map((i) => i.code))
+    setMoodboardLayout(project!.id, packTiles(codes, 0, 1))
+    topZRef.current = codes.length + 1
+  }
 
   async function downloadPng() {
     setDownloading(true)
@@ -144,10 +196,10 @@ export function Moodboard() {
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          <button onClick={() => setSeed((s) => s + 1)}
+          <button onClick={autoArrange}
             className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-caption transition-all hover:bg-black/5"
             style={{ borderColor: '#d0c8be', color: '#6b5e4a', fontSize: '11px' }}>
-            ↺ Shuffle
+            ↺ Auto-arrange
           </button>
           <button onClick={downloadPng} disabled={downloading || visible.length === 0}
             className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-caption transition-all hover:bg-black/5 disabled:opacity-40"
@@ -162,12 +214,16 @@ export function Moodboard() {
         </div>
       </nav>
 
+      <p className="px-6 pt-4 text-center text-caption md:px-10" style={{ color: '#a89880', fontSize: '11px' }}>
+        Drag any image to reposition it, or grab a corner to resize. Your layout is saved automatically.
+      </p>
+
       {/* ── Mood board canvas ── */}
-      <div className="px-6 py-8 md:px-10 md:py-10">
-        <div ref={canvasRef} className="mx-auto max-w-6xl rounded-3xl p-8 md:p-12" style={{ background: '#f7f3ee' }}>
+      <div className="px-6 py-6 md:px-10 md:py-8 overflow-x-auto">
+        <div ref={canvasRef} className="mx-auto rounded-3xl p-8 md:p-12" style={{ background: '#f7f3ee', width: 'fit-content', minWidth: '100%' }}>
 
           {/* ── Board header ── */}
-          <div className="mb-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
+          <div className="mb-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end" style={{ width: CANVAS_W + 64 }}>
             {/* Title block */}
             <div>
               <p className="mb-2 text-caption uppercase tracking-[0.2em]" style={{ color: '#a89880', fontSize: '11px' }}>
@@ -205,36 +261,43 @@ export function Moodboard() {
           </div>
 
           {/* ── Horizontal rule ── */}
-          <div className="mb-10 border-t" style={{ borderColor: '#e0d8ce' }} />
+          <div className="mb-10 border-t" style={{ borderColor: '#e0d8ce', width: CANVAS_W }} />
 
-          {/* ── Collage ── */}
+          {/* ── Freeform collage canvas ── */}
           {visible.length === 0 ? (
-            <div className="flex h-64 items-center justify-center rounded-2xl border-2 border-dashed" style={{ borderColor: '#d0c8be' }}>
+            <div className="flex h-64 items-center justify-center rounded-2xl border-2 border-dashed" style={{ borderColor: '#d0c8be', width: CANVAS_W }}>
               <div className="text-center">
                 <p className="font-serif text-title-sm" style={{ color: '#8a7a6a' }}>No approved items yet</p>
                 <p className="mt-1 text-body" style={{ color: '#a89880' }}>Approve items in Materials, Lighting, or Furniture first.</p>
               </div>
             </div>
           ) : (
-            <div
-              className="grid gap-4"
-              style={{
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gridAutoRows: '160px',
-              }}
-            >
-              {visible.map((item, i) => {
-                const slot = SLOT_SIZES[i % SLOT_SIZES.length]
-                const rot = ROTATIONS[i % ROTATIONS.length]
+            <div className="relative" style={{ width: CANVAS_W, height: canvasHeight }}>
+              {visible.map((item) => {
+                const tile = layout[item.code] ?? { ...sizeForCode(item.code), x: 0, y: 0, z: 1 }
                 return (
-                  <CollageItem
+                  <Rnd
                     key={item.code}
-                    item={item}
-                    colSpanClass={slot.cols}
-                    imgHeight={slot.imgH}
-                    rotation={rot}
-                    onClick={() => setSelected(item)}
-                  />
+                    bounds="parent"
+                    size={{ width: tile.w, height: tile.h }}
+                    position={{ x: tile.x, y: tile.y }}
+                    minWidth={140}
+                    minHeight={120}
+                    style={{ zIndex: tile.z }}
+                    onDragStart={() => bringToFront(item.code)}
+                    onDragStop={(_e, d) => setMoodboardTile(project!.id, item.code, { x: d.x, y: d.y })}
+                    onResizeStart={() => bringToFront(item.code)}
+                    onResizeStop={(_e, _dir, ref, _delta, pos) =>
+                      setMoodboardTile(project!.id, item.code, {
+                        w: ref.offsetWidth,
+                        h: ref.offsetHeight,
+                        x: pos.x,
+                        y: pos.y,
+                      })
+                    }
+                  >
+                    <CanvasTile item={item} onInfo={() => setSelected(item)} />
+                  </Rnd>
                 )
               })}
             </div>
@@ -242,7 +305,7 @@ export function Moodboard() {
 
           {/* ── Board footer ── */}
           {visible.length > 0 && (
-            <div className="mt-12 flex items-center justify-between border-t pt-6" style={{ borderColor: '#e0d8ce' }}>
+            <div className="mt-12 flex items-center justify-between border-t pt-6" style={{ borderColor: '#e0d8ce', width: CANVAS_W }}>
               <p className="font-serif italic" style={{ color: '#a89880', fontSize: '12px' }}>
                 {visible.length} item{visible.length !== 1 ? 's' : ''} · {info.projectType}
                 {info.budget?.state === 'filled' ? ` · ${describeField(info.budget)}` : ''}
@@ -315,66 +378,50 @@ export function Moodboard() {
   )
 }
 
-function CollageItem({
+function CanvasTile({
   item,
-  colSpanClass,
-  imgHeight,
-  rotation,
-  onClick,
+  onInfo,
 }: {
   item: ApprovedItem & { discipline: Discipline }
-  colSpanClass: string
-  imgHeight: string
-  rotation: number
-  onClick: () => void
+  onInfo: () => void
 }) {
   const [imgError, setImgError] = useState(false)
   const hasImage = !!item.imageUrl && !imgError
 
   return (
-    <div
-      onClick={onClick}
-      className={['cursor-pointer group transition-all duration-300', colSpanClass].join(' ')}
-      style={{ transform: `rotate(${rotation}deg)`, transformOrigin: 'center center' }}
-    >
-      <div className="h-full flex flex-col">
-        {/* Image block — no card box, just the image on the canvas */}
-        <div
-          className={['relative overflow-hidden rounded-2xl flex-shrink-0', imgHeight].join(' ')}
-          style={{
-            boxShadow: '0 2px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.07)',
-          }}
-        >
-          {hasImage ? (
-            <img
-              src={item.imageUrl}
-              alt={item.name}
-              crossOrigin="anonymous"
-              onError={() => setImgError(true)}
-              className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-            />
-          ) : (
-            <div className="h-full w-full flex items-center justify-center" style={{ background: '#ede8df' }}>
-              <span className="font-serif select-none" style={{ fontSize: '36px', color: '#c2b8ac' }}>{item.name.charAt(0)}</span>
-            </div>
-          )}
-
-          {/* Hover gradient overlay */}
-          <div
-            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3"
-            style={{ background: 'linear-gradient(to top, rgba(26,23,16,0.65) 0%, transparent 55%)' }}
-          >
-            <p className="font-serif text-white leading-tight" style={{ fontSize: '12px' }}>{item.name}</p>
-          </div>
+    <div className="group relative h-full w-full overflow-hidden rounded-2xl" style={{ boxShadow: '0 2px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.07)', cursor: 'grab' }}>
+      {hasImage ? (
+        <img
+          src={item.imageUrl}
+          alt={item.name}
+          crossOrigin="anonymous"
+          draggable={false}
+          onError={() => setImgError(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="h-full w-full flex items-center justify-center" style={{ background: '#ede8df' }}>
+          <span className="font-serif select-none" style={{ fontSize: '36px', color: '#c2b8ac' }}>{item.name.charAt(0)}</span>
         </div>
+      )}
 
-        {/* Caption — annotation style, below the image */}
-        <div className="mt-2 px-0.5">
-          <p className="font-serif leading-snug line-clamp-1" style={{ color: '#1a1710', fontSize: '12px' }}>{item.name}</p>
-          <p className="line-clamp-1" style={{ color: '#8a7a6a', fontSize: '10px', marginTop: '1px' }}>{item.manufacturer}</p>
-          <p className="font-medium" style={{ color: '#c9922a', fontSize: '11px', marginTop: '2px' }}>{item.estimatedCost}</p>
-        </div>
+      {/* Hover caption + info button */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3"
+        style={{ background: 'linear-gradient(to top, rgba(26,23,16,0.72) 0%, transparent 60%)' }}
+      >
+        <p className="font-serif text-white leading-tight" style={{ fontSize: '12px' }}>{item.name}</p>
+        <p className="leading-tight" style={{ fontSize: '10px', color: 'rgba(255,255,255,0.75)' }}>{item.manufacturer}</p>
       </div>
+      <button
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onInfo() }}
+        className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+        style={{ background: 'rgba(26,23,16,0.55)', color: '#fff', fontSize: '12px' }}
+        title="View details"
+      >
+        i
+      </button>
     </div>
   )
 }

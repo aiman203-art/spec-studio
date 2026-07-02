@@ -9,4 +9,8 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  define: {
+    // react-rnd's dependency chain (re-resizable) reads process.env.NODE_ENV directly.
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'development'),
+  },
 })

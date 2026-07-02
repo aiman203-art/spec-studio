@@ -29,7 +29,7 @@ export function parseProjectJson(text: string): Project {
   ) {
     throw new Error('Not a valid Spec Studio project file.')
   }
-  return data
+  return { ...data, moodboardLayout: data.moodboardLayout ?? {} }
 }
 
 /** Parse an Excel or CSV schedule export into a new Project shell. */
@@ -109,6 +109,7 @@ function parseScheduleFile(buffer: ArrayBuffer): Project {
     materials: result.materials,
     lighting: result.lighting,
     furniture: result.furniture,
+    moodboardLayout: {},
   }
 }
 

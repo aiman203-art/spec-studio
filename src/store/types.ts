@@ -93,6 +93,15 @@ export interface DisciplineState {
   itemCounter: number // for sequential codes (MAT-001…)
 }
 
+/** Freeform position/size of one tile on the mood board canvas, keyed by item code. */
+export interface MoodboardTile {
+  x: number
+  y: number
+  w: number
+  h: number
+  z: number
+}
+
 export interface Project {
   id: string
   createdAt: string // ISO
@@ -100,6 +109,7 @@ export interface Project {
   materials: DisciplineState
   lighting: DisciplineState
   furniture: DisciplineState
+  moodboardLayout: Record<string, MoodboardTile>
 }
 
 export function emptyDiscipline(): DisciplineState {

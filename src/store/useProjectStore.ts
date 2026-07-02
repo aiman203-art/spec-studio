@@ -6,6 +6,7 @@ import {
   emptyDiscipline,
   type ApprovedItem,
   type Discipline,
+  type MoodboardTile,
   type Project,
   type ProjectInfo,
   type ProjectType,
@@ -46,6 +47,7 @@ export function newProject(info: ProjectInfo): Project {
     materials: emptyDiscipline(),
     lighting: emptyDiscipline(),
     furniture: emptyDiscipline(),
+    moodboardLayout: {},
   }
 }
 
@@ -87,6 +89,15 @@ interface ProjectState {
   ) => void
   removeApprovedItem: (id: string, d: Discipline, code: string) => void
   clearApprovedItems: (id: string, d: Discipline) => void
+
+  /** Merge a partial tile update (position/size/stacking) for one mood board item. */
+  setMoodboardTile: (
+    id: string,
+    code: string,
+    patch: Partial<MoodboardTile>,
+  ) => void
+  /** Replace tiles for the given codes wholesale (used by auto-arrange). */
+  setMoodboardLayout: (id: string, tiles: Record<string, MoodboardTile>) => void
 }
 
 function mutateProject(
@@ -208,26 +219,54 @@ export const useProjectStore = create<ProjectState>()(
             p[d].approved = []
           }),
         })),
+
+      setMoodboardTile: (id, code, patch) =>
+        set((s) => ({
+          projects: mutateProject(s.projects, id, (p) => {
+            const existing = p.moodboardLayout[code]
+            p.moodboardLayout[code] = { ...(existing ?? { x: 0, y: 0, w: 260, h: 220, z: 1 }), ...patch }
+          }),
+        })),
+
+      setMoodboardLayout: (id, tiles) =>
+        set((s) => ({
+          projects: mutateProject(s.projects, id, (p) => {
+            p.moodboardLayout = { ...p.moodboardLayout, ...tiles }
+          }),
+        })),
     }),
     {
       name: 'spec-studio:v1', // localStorage key — autosave (plan decision #4)
-      version: 2,
-      migrate: (stored: unknown) => {
-        // v2: strip unreliable third-party imageUrls; keep only picsum seed images
-        const state = stored as { projects?: Project[] }
-        const stripImages = (item: RecommendationItem | ApprovedItem) => ({
-          ...item,
-          imageUrl: item.imageUrl?.startsWith('https://picsum.photos/') ? item.imageUrl : '',
-        })
-        return {
-          ...state,
-          projects: (state.projects ?? []).map((p) => ({
-            ...p,
-            materials: { ...p.materials, recommendations: p.materials.recommendations.map(stripImages), approved: p.materials.approved.map(stripImages) },
-            lighting:  { ...p.lighting,  recommendations: p.lighting.recommendations.map(stripImages),  approved: p.lighting.approved.map(stripImages) },
-            furniture: { ...p.furniture, recommendations: p.furniture.recommendations.map(stripImages), approved: p.furniture.approved.map(stripImages) },
-          })),
+      version: 3,
+      migrate: (stored: unknown, fromVersion: number) => {
+        let state = stored as { projects?: Project[] }
+        if (fromVersion < 2) {
+          // v2: strip unreliable third-party imageUrls; keep only picsum seed images
+          const stripImages = <T extends RecommendationItem>(item: T): T => ({
+            ...item,
+            imageUrl: item.imageUrl?.startsWith('https://picsum.photos/') ? item.imageUrl : '',
+          })
+          state = {
+            ...state,
+            projects: (state.projects ?? []).map((p) => ({
+              ...p,
+              materials: { ...p.materials, recommendations: p.materials.recommendations.map(stripImages), approved: p.materials.approved.map(stripImages) },
+              lighting:  { ...p.lighting,  recommendations: p.lighting.recommendations.map(stripImages),  approved: p.lighting.approved.map(stripImages) },
+              furniture: { ...p.furniture, recommendations: p.furniture.recommendations.map(stripImages), approved: p.furniture.approved.map(stripImages) },
+            })),
+          }
         }
+        if (fromVersion < 3) {
+          // v3: add the freeform mood board canvas layout map
+          state = {
+            ...state,
+            projects: (state.projects ?? []).map((p) => ({
+              ...p,
+              moodboardLayout: p.moodboardLayout ?? {},
+            })),
+          }
+        }
+        return state
       },
     },
   ),
