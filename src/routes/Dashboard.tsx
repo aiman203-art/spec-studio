@@ -127,12 +127,12 @@ export function Dashboard() {
         <DocModal
           project={project}
           onClose={() => setShowDocModal(false)}
-          onExport={async (format, selected, includeSummary, includeMoodboard) => {
+          onExport={async (format, selected, includeSummary, includeMoodboard, moodboardCanvas) => {
             setShowDocModal(false)
             toast(`Preparing ${format.toUpperCase()} export…`)
             try {
               if (format === 'pdf') {
-                await exportPdf(project, selected, includeSummary, includeMoodboard)
+                await exportPdf(project, selected, includeSummary, includeMoodboard, moodboardCanvas)
               } else {
                 await exportSchedule(project, format, selected, includeSummary, includeMoodboard)
               }
@@ -405,8 +405,9 @@ function DocModal({
 }: {
   project: ReturnType<typeof useProjectStore.getState>['projects'][0]
   onClose: () => void
-  onExport: (format: 'xlsx' | 'docx' | 'pdf', selected: Set<string>, includeSummary: boolean, includeMoodboard: boolean) => void
+  onExport: (format: 'xlsx' | 'docx' | 'pdf', selected: Set<string>, includeSummary: boolean, includeMoodboard: boolean, moodboardCanvas?: HTMLCanvasElement) => void
 }) {
+  const captureRef = useRef<HTMLDivElement>(null)
   const allCodes = DISCIPLINES.flatMap((d) => project[d].approved.map((a) => a.code))
   const [checked, setChecked] = useState<Set<string>>(new Set(allCodes))
   const [disciplineOn, setDisciplineOn] = useState<Set<string>>(new Set(DISCIPLINES))
@@ -414,6 +415,16 @@ function DocModal({
   const [includeMoodboard, setIncludeMoodboard] = useState(true)
   const [busy, setBusy] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+
+  async function captureMoodboard(): Promise<HTMLCanvasElement | undefined> {
+    if (!includeMoodboard || !captureRef.current) return undefined
+    return html2canvas(captureRef.current, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+    })
+  }
 
   function toggle(code: string) {
     setChecked((prev) => {
@@ -440,7 +451,8 @@ function DocModal({
   async function handleExport(format: 'xlsx' | 'docx' | 'pdf') {
     if (checked.size === 0 && !includeSummary && !includeMoodboard) return
     setBusy(true)
-    await onExport(format, checked, includeSummary, includeMoodboard)
+    const canvas = format === 'pdf' ? await captureMoodboard() : undefined
+    await onExport(format, checked, includeSummary, includeMoodboard, canvas)
     setBusy(false)
   }
 
@@ -554,6 +566,22 @@ function DocModal({
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Hidden off-screen moodboard capture target for html2canvas */}
+      <div
+        ref={captureRef}
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          left: -9999,
+          top: 0,
+          width: 900,
+          background: '#ffffff',
+          pointerEvents: 'none',
+        }}
+      >
+        <MoodboardGrid project={project} />
       </div>
 
       {/* HTML Preview modal */}
