@@ -10,7 +10,22 @@ import {
 
 export const config = { maxDuration: 60 }
 
-const GEMINI_MODEL = 'gemini-1.5-flash'
+const GEMINI_MODEL = 'gemini-flash-latest'
+
+const SEARCH_NOUN: Record<string, string> = {
+  materials: 'interior materials finishes',
+  lighting: 'lighting fixtures',
+  furniture: 'furniture',
+}
+
+function fieldValue(f: unknown): string {
+  if (f && typeof f === 'object' && 'value' in (f as Record<string, unknown>)) {
+    const v = (f as { value: unknown }).value
+    if (v && typeof v === 'object' && 'address' in (v as object)) return String((v as { address: string }).address)
+    return v != null ? String(v) : ''
+  }
+  return f != null ? String(f) : ''
+}
 
 type MockItem = Omit<ModelItem, 'specPairs'> & { specs: Record<string, string> }
 const MOCK_ITEMS: Record<string, MockItem[]> = {
@@ -134,6 +149,23 @@ const MOCK_ITEMS: Record<string, MockItem[]> = {
   ],
 }
 
+async function fetchSearchContext(query: string, serpKey: string): Promise<string> {
+  try {
+    const q = encodeURIComponent(query)
+    const r = await fetch(`https://serpapi.com/search.json?engine=google&q=${q}&num=8&api_key=${serpKey}`)
+    if (!r.ok) return ''
+    const data = await r.json() as {
+      organic_results?: { title?: string; snippet?: string; link?: string }[]
+    }
+    const results = data.organic_results ?? []
+    return results
+      .map((res, i) => `${i + 1}. ${res.title ?? ''}\n   ${res.snippet ?? ''}\n   Source: ${res.link ?? ''}`)
+      .join('\n')
+  } catch {
+    return ''
+  }
+}
+
 async function fetchImages(items: { name: string; manufacturer: string }[], serpKey: string): Promise<string[]> {
   return Promise.all(
     items.map(async (m) => {
@@ -196,10 +228,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const systemPrompt = buildSystemPrompt()
   const userPrompt = buildUserPrompt(body)
 
+  // Ground the model with real web results via SerpAPI instead of Gemini's
+  // paid built-in google_search tool, which the free API tier doesn't cover.
+  const searchQuery = [
+    SEARCH_NOUN[body.discipline] ?? body.discipline,
+    ...Object.values(body.scope ?? {}),
+    fieldValue(body.projectInfo?.style),
+    fieldValue(body.projectInfo?.location),
+    'manufacturer specifications price',
+  ].filter(Boolean).join(' ')
+
+  const searchContext = serpKey ? await fetchSearchContext(searchQuery, serpKey) : ''
+
+  const groundingBlock = searchContext
+    ? `\n## Live web search results (cite real sources from here where relevant)\n${searchContext}\n`
+    : '\nNo live web search is available for this request — rely only on real, currently-available products you are confident about from your training, and omit anything you are not sure still exists.\n'
+
   const fullPrompt = `${systemPrompt}
 
 ${userPrompt}
-
+${groundingBlock}
 IMPORTANT: Respond ONLY with a valid JSON object in this exact format (no markdown, no code fences):
 {
   "items": [
@@ -224,7 +272,7 @@ IMPORTANT: Respond ONLY with a valid JSON object in this exact format (no markdo
 }`
 
   try {
-    // ── Call Gemini REST API with Google Search grounding ──────────────────
+    // ── Call Gemini REST API, grounded via SerpAPI search context above ─────
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
       {
@@ -232,7 +280,6 @@ IMPORTANT: Respond ONLY with a valid JSON object in this exact format (no markdo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-          tools: [{ google_search: {} }],
           generationConfig: {
             temperature: 0.4,
             maxOutputTokens: 8192,
