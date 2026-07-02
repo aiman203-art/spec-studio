@@ -170,6 +170,8 @@ function DocModal({
   const [includeSummary, setIncludeSummary] = useState(true)
   const [includeMoodboard, setIncludeMoodboard] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState(false)
 
   function toggle(code: string) {
     setChecked((prev) => {
@@ -198,6 +200,22 @@ function DocModal({
     setBusy(true)
     await onExport(format, checked, includeSummary, includeMoodboard)
     setBusy(false)
+  }
+
+  async function handlePreview() {
+    if (checked.size === 0 && !includeSummary && !includeMoodboard) return
+    setPreviewing(true)
+    try {
+      const url = await exportPdf(project, checked, includeSummary, includeMoodboard, undefined, 'bloburl')
+      if (url) setPreviewUrl(url as string)
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
+  function closePreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(null)
   }
 
   return (
@@ -284,6 +302,14 @@ function DocModal({
             {includeMoodboard ? ' · mood board' : ''}
           </span>
           <div className="flex gap-2">
+            <button
+              disabled={previewing || busy || (checked.size === 0 && !includeSummary && !includeMoodboard)}
+              onClick={handlePreview}
+              className="rounded-pill px-4 h-9 text-body font-medium transition-all disabled:opacity-40"
+              style={{ background: 'transparent', color: '#6b5e4a', border: '1px solid #d6cfc2' }}
+            >
+              {previewing ? '…' : '⊡ Preview'}
+            </button>
             {([
               { fmt: 'xlsx', label: 'Excel', bg: '#e2dbd0', color: '#3d3020', border: '1px solid #d6cfc2' },
               { fmt: 'docx', label: 'Word',  bg: '#2d5fa6', color: '#fff',    border: 'none' },
@@ -302,6 +328,50 @@ function DocModal({
           </div>
         </div>
       </div>
+
+      {/* PDF Preview modal */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-[60] flex flex-col"
+          style={{ background: 'rgba(14,12,9,0.85)' }}
+        >
+          {/* Preview toolbar */}
+          <div className="flex items-center justify-between px-6 py-3 shrink-0" style={{ background: '#1a1710', borderBottom: '1px solid #2e2a24' }}>
+            <div className="flex items-center gap-3">
+              <span className="font-serif text-title-sm" style={{ color: '#f5f0e8' }}>
+                PDF Preview
+              </span>
+              <span className="text-caption" style={{ color: '#8a7a6a' }}>
+                {project.info.name || 'Untitled Project'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => { closePreview(); handleExport('pdf') }}
+                className="rounded-pill px-5 h-9 text-body font-medium"
+                style={{ background: '#c9922a', color: '#fff' }}
+              >
+                ↓ Download PDF
+              </button>
+              <button
+                onClick={closePreview}
+                className="rounded-pill px-4 h-9 text-body"
+                style={{ background: 'transparent', color: '#8a7a6a', border: '1px solid #3a3530' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          {/* iframe */}
+          <iframe
+            src={previewUrl}
+            className="flex-1 w-full"
+            style={{ border: 'none', background: '#2a2520' }}
+            title="PDF Preview"
+          />
+        </div>
+      )}
     </div>
   )
 }

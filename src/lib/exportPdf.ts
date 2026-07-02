@@ -15,7 +15,8 @@ export async function exportPdf(
   includeSummary?: boolean,
   includeMoodboard?: boolean,
   moodboardCanvas?: HTMLCanvasElement,
-): Promise<void> {
+  mode?: 'save' | 'bloburl',
+): Promise<string | void> {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const info = project.info
   const pageW = doc.internal.pageSize.getWidth()
@@ -192,5 +193,8 @@ export async function exportPdf(
   }
 
   const safe = (info.name || 'schedule').replace(/[^\w-]+/g, '_').slice(0, 40) || 'schedule'
+  if (mode === 'bloburl') {
+    return doc.output('bloburl') as unknown as string
+  }
   doc.save(`${safe}_schedule.pdf`)
 }
