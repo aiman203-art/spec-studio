@@ -47,8 +47,8 @@ export interface ResearchRequest {
   existingCodes: string[]
 }
 
-export function buildSystemPrompt(): string {
-  return [
+export function buildSystemPrompt(discipline?: Discipline): string {
+  const lines = [
     'You are a senior interior-design specification researcher working inside a professional documentation tool.',
     'You research REAL, currently-available products and finishes for a designer who retains all approval authority.',
     '',
@@ -60,7 +60,13 @@ export function buildSystemPrompt(): string {
     '- For each option give an honest rationale, real pros and cons, and concrete compliance checks relevant to the project type (e.g. slip rating, fire rating, infection control, contract durability).',
     '- Keep specs factual and short (3 key specs per item).',
     '- If you are unsure a detail is real, omit it rather than guessing.',
-  ].join('\n')
+  ]
+  if (discipline === 'lighting') {
+    lines.push(
+      '- For every lighting item, always include one specPair labelled "Colour Temperature" with a value formatted as the Kelvin rating plus its warmth descriptor, e.g. "3000K Warm White", "4000K Cool White", or "2700K Warm White".',
+    )
+  }
+  return lines.join('\n')
 }
 
 export function buildUserPrompt(req: ResearchRequest): string {

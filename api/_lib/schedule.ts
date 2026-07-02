@@ -11,6 +11,8 @@ export interface ExportItem {
   manufacturer: string
   finish: string
   colour: string
+  /** Lighting only — e.g. "4000K Cool White". Empty for other disciplines. */
+  colourTemp?: string
   room: string
   quantity: number
   pros: string[]
@@ -38,22 +40,33 @@ export const DISCIPLINE_TITLE: Record<Discipline, string> = {
   furniture: 'Furniture Schedule',
 }
 
-export const COLUMNS: { header: string; get: (i: ExportItem) => string }[] = [
-  { header: 'Code', get: (i) => i.code },
-  { header: 'Name', get: (i) => i.name },
-  { header: 'Manufacturer', get: (i) => i.manufacturer },
-  { header: 'Finish', get: (i) => i.finish },
-  { header: 'Colour', get: (i) => i.colour },
-  { header: 'Room', get: (i) => i.room },
-  { header: 'Qty', get: (i) => String(i.quantity ?? '') },
-  { header: 'Advantages', get: (i) => (i.pros ?? []).join('; ') },
-  { header: 'Disadvantages', get: (i) => (i.cons ?? []).join('; ') },
-  { header: 'Estimated Cost', get: (i) => i.estimatedCost },
-  { header: 'Fire Rating', get: (i) => i.fireRating },
-  { header: 'Sustainability Cert', get: (i) => i.sustainabilityCert },
-  { header: 'Notes', get: (i) => i.notes ?? '' },
-  { header: 'Source URL', get: (i) => (i.sources ?? []).map((s) => s.url).join(', ') },
-]
+type Column = { header: string; get: (i: ExportItem) => string }
+
+/** Column set per discipline — lighting gets an extra Colour Temp column. */
+export function columnsFor(discipline: Discipline): Column[] {
+  const columns: Column[] = [
+    { header: 'Code', get: (i) => i.code },
+    { header: 'Name', get: (i) => i.name },
+    { header: 'Manufacturer', get: (i) => i.manufacturer },
+    { header: 'Finish', get: (i) => i.finish },
+    { header: 'Colour', get: (i) => i.colour },
+  ]
+  if (discipline === 'lighting') {
+    columns.push({ header: 'Colour Temp', get: (i) => i.colourTemp || '—' })
+  }
+  columns.push(
+    { header: 'Room', get: (i) => i.room },
+    { header: 'Qty', get: (i) => String(i.quantity ?? '') },
+    { header: 'Advantages', get: (i) => (i.pros ?? []).join('; ') },
+    { header: 'Disadvantages', get: (i) => (i.cons ?? []).join('; ') },
+    { header: 'Estimated Cost', get: (i) => i.estimatedCost },
+    { header: 'Fire Rating', get: (i) => i.fireRating },
+    { header: 'Sustainability Cert', get: (i) => i.sustainabilityCert },
+    { header: 'Notes', get: (i) => i.notes ?? '' },
+    { header: 'Source URL', get: (i) => (i.sources ?? []).map((s) => s.url).join(', ') },
+  )
+  return columns
+}
 
 export function activeDisciplines(payload: ExportPayload): Discipline[] {
   return (['materials', 'lighting', 'furniture'] as Discipline[]).filter(

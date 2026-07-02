@@ -7,6 +7,7 @@ import { useProjectStore } from '../store/useProjectStore'
 import { DISCIPLINES, type Discipline } from '../store/types'
 import { exportSchedule } from '../lib/export'
 import { exportPdf } from '../lib/exportPdf'
+import { extractColourTemp } from '../lib/colourTemp'
 
 const LABEL: Record<Discipline, string> = {
   materials: 'Materials',
@@ -183,6 +184,7 @@ export function Schedules() {
                     <Th>Name</Th>
                     <Th>Manufacturer</Th>
                     <Th>Finish / Colour</Th>
+                    {tab === 'lighting' && <Th>Colour Temp</Th>}
                     <Th>Room</Th>
                     <Th>Qty</Th>
                     <Th>Cost</Th>
@@ -203,6 +205,7 @@ export function Schedules() {
                       </Td>
                       <Td className="text-faint">{it.manufacturer}</Td>
                       <Td className="text-faint">{it.finish}{it.colour ? ` · ${it.colour}` : ''}</Td>
+                      {tab === 'lighting' && <Td className="text-faint">{extractColourTemp(it) || '—'}</Td>}
                       <Td className="text-faint">{it.room}</Td>
                       <Td>
                         <input

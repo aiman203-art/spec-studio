@@ -2,6 +2,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Discipline, Project } from '../store/types'
 import { describeField } from './fieldState'
+import { extractColourTemp } from './colourTemp'
 
 const DISC_LABEL: Record<Discipline, string> = {
   materials: 'Materials',
@@ -98,16 +99,22 @@ export async function exportPdf(
     doc.text(DISC_LABEL[d].toUpperCase() + ' SCHEDULE', 14, y)
     y += 4
 
+    const isLighting = d === 'lighting'
+    const head = isLighting
+      ? ['Code', 'Name', 'Manufacturer', 'Finish', 'Colour', 'Colour Temp', 'Room', 'Qty', 'Cost', 'Notes']
+      : ['Code', 'Name', 'Manufacturer', 'Finish', 'Colour', 'Room', 'Qty', 'Cost', 'Notes']
+
     autoTable(doc, {
       startY: y,
       margin: { left: 14, right: 14 },
-      head: [['Code', 'Name', 'Manufacturer', 'Finish', 'Colour', 'Room', 'Qty', 'Cost', 'Notes']],
+      head: [head],
       body: items.map((it) => [
         it.code,
         it.name,
         it.manufacturer,
         it.finish,
         it.colour,
+        ...(isLighting ? [extractColourTemp(it) || '—'] : []),
         it.room,
         String(it.quantity),
         it.estimatedCost,
@@ -118,8 +125,8 @@ export async function exportPdf(
       alternateRowStyles: { fillColor: cream },
       columnStyles: {
         0: { cellWidth: 22, fontStyle: 'bold', textColor: mid },
-        6: { cellWidth: 10, halign: 'center' },
-        7: { cellWidth: 28 },
+        [head.length - 3]: { cellWidth: 10, halign: 'center' },
+        [head.length - 2]: { cellWidth: 28 },
       },
     })
     y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10

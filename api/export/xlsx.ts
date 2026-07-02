@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import * as XLSX from 'xlsx'
 import {
   activeDisciplines,
-  COLUMNS,
+  columnsFor,
   DISCIPLINE_TITLE,
   safeFileName,
   type ExportPayload,
@@ -34,7 +34,6 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const wb = XLSX.utils.book_new()
-  const header = COLUMNS.map((c) => c.header)
 
   // Project Summary sheet
   if (hasSummary) {
@@ -52,17 +51,18 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
 
   // Discipline sheets
   for (const d of disciplines) {
+    const columns = columnsFor(d)
     const items = payload.disciplines[d] ?? []
-    const rows = items.map((it) => COLUMNS.map((c) => c.get(it)))
+    const rows = items.map((it) => columns.map((c) => c.get(it)))
     const aoa = [
       [DISCIPLINE_TITLE[d]],
       [`${payload.meta.projectName} · ${payload.meta.client} · ${payload.meta.date}`],
       [],
-      header,
+      columns.map((c) => c.header),
       ...rows,
     ]
     const ws = XLSX.utils.aoa_to_sheet(aoa)
-    ws['!cols'] = COLUMNS.map((c) => ({
+    ws['!cols'] = columns.map((c) => ({
       wch: Math.max(c.header.length + 2, 16),
     }))
     XLSX.utils.book_append_sheet(

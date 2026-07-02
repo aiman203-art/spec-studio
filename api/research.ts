@@ -225,7 +225,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // ── Build prompt ───────────────────────────────────────────────────────────
-  const systemPrompt = buildSystemPrompt()
+  const systemPrompt = buildSystemPrompt(body.discipline)
   const userPrompt = buildUserPrompt(body)
 
   // Ground the model with real web results via SerpAPI instead of Gemini's

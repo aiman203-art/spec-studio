@@ -1,6 +1,7 @@
 import type { Discipline, Project } from '../store/types'
 // Discipline re-used below for moodboard flatMap
 import { describeField } from './fieldState'
+import { extractColourTemp } from './colourTemp'
 
 interface ExportItem {
   code: string
@@ -8,6 +9,7 @@ interface ExportItem {
   manufacturer: string
   finish: string
   colour: string
+  colourTemp?: string
   room: string
   quantity: number
   pros: string[]
@@ -26,6 +28,7 @@ function toExportItems(project: Project, d: Discipline, selected?: Set<string>):
     manufacturer: a.manufacturer,
     finish: a.finish,
     colour: a.colour,
+    colourTemp: d === 'lighting' ? extractColourTemp(a) : undefined,
     room: a.room,
     quantity: a.quantity,
     pros: a.pros,

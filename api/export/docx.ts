@@ -14,9 +14,10 @@ import {
 } from 'docx'
 import {
   activeDisciplines,
-  COLUMNS,
+  columnsFor,
   DISCIPLINE_TITLE,
   safeFileName,
+  type Discipline,
   type ExportItem,
   type ExportPayload,
   type MoodboardItem,
@@ -68,13 +69,14 @@ function moodboardTable(items: MoodboardItem[]): Table {
   return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [head, ...rows] })
 }
 
-function disciplineTable(items: ExportItem[]): Table {
+function disciplineTable(discipline: Discipline, items: ExportItem[]): Table {
+  const columns = columnsFor(discipline)
   const head = new TableRow({
     tableHeader: true,
-    children: COLUMNS.map((c) => headerCell(c.header)),
+    children: columns.map((c) => headerCell(c.header)),
   })
   const rows = items.map(
-    (it) => new TableRow({ children: COLUMNS.map((c) => bodyCell(c.get(it))) }),
+    (it) => new TableRow({ children: columns.map((c) => bodyCell(c.get(it))) }),
   )
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -151,7 +153,7 @@ export default async function handler(
         children: [new TextRun({ text: DISCIPLINE_TITLE[d] })],
       }),
     )
-    children.push(disciplineTable(payload.disciplines[d] ?? []))
+    children.push(disciplineTable(d, payload.disciplines[d] ?? []))
   }
 
   // Mood Board section
