@@ -240,7 +240,7 @@ export function Schedules() {
   )
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children?: React.ReactNode }) {
   return <th className="px-3 py-2 font-medium">{children}</th>
 }
 function Td({
